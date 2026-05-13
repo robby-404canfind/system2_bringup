@@ -1,0 +1,35 @@
+# Semantic Location 정의 — office 환경 기준
+#
+# Ch02에서 정의한 시맨틱 위치를 System2에서도 사용합니다.
+# 좌표는 placeholder이며, RViz에서 실제 좌표를 측정하여 업데이트하세요.
+
+locations:
+  office_desk_1:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    description: "1번 사무실 책상"
+
+  meeting_room:
+    x: 0.0
+    y: 0.0
+    yaw: 1.57
+    description: "회의실 입구"
+
+  corridor_a:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    description: "복도 A"
+
+  lobby:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    description: "로비"
+
+  charging_station:
+    x: 0.0
+    y: 0.0
+    yaw: 3.14
+    description: "충전 스테이션 (로봇 홈)"
