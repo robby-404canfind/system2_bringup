@@ -197,6 +197,7 @@ class System2PlannerNode(Node):
                         mission_id=plan.mission_id,
                         validator=self.validator,
                     )
+                    self.plan_pub.publish(String(data=new_plan.model_dump_json()))
                     self._execute_plan(new_plan, replan_depth + 1)
                 except Exception as e:
                     self.get_logger().error(f"Replan 실패: {e}")
