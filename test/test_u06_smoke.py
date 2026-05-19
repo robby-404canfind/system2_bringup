@@ -137,7 +137,7 @@ def smoke_test_3_failure_replan():
         print(f"✗ Replan 스키마 실패: {e}")
         print(
             "△ 스모크 테스트 3 부분 통과 "
-            "(Replan 경로 확인됨, 출력 계약 문제)"
+            "(Replan 경로 확인됨, 출력 형식 문제)"
         )
     except LLMClientError as e:
         print(f"✗ Replan 실패: {e}")

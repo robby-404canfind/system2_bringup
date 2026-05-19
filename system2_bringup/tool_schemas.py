@@ -3,7 +3,7 @@ import json
 
 
 def build_tool_schemas(locations: list[str], patrol_routes: list[str]) -> list[dict]:
-    """화이트리스트를 enum에 포함한 Tool Schema를 생성합니다."""
+    """허용 목록을 enum에 포함한 Tool Schema를 생성합니다."""
     return [
         {
             "type": "function",
@@ -51,7 +51,7 @@ def build_tool_schemas(locations: list[str], patrol_routes: list[str]) -> list[d
             "type": "function",
             "function": {
                 "name": "wait",
-                "description": "지정 시간 동안 정중하게 대기합니다",
+                "description": "지정 시간 동안 대기합니다",
                 "parameters": {
                     "type": "object",
                     "properties": {

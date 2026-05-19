@@ -94,4 +94,4 @@ class ActionDispatcher:
     def _exec_report(self, step: ReportStep) -> ActionResult:
         status = step.params.status
         success = exec_report(status, report_callback=self.report_cb)
-        return ActionResult(success=success, message=f"report({status}) 발행")
+        return ActionResult(success=success, message=f"report({status}) publish")

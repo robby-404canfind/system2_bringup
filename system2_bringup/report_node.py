@@ -10,7 +10,7 @@ def exec_report(status: str, report_callback=None) -> bool:
 
     Args:
         status: 보고 내용.
-        report_callback: 보고 발행 콜백.
+        report_callback: 보고 publish 콜백.
 
     Returns:
         True (항상 성공).

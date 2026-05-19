@@ -10,11 +10,11 @@ from .plan_models import HighLevelPlan
 
 
 class SchemaInvalidError(Exception):
-    """모델 출력이 HighLevelPlan 계약을 만족하지 못할 때 발생."""
+    """모델 출력이 HighLevelPlan 스키마를 만족하지 못할 때 발생."""
 
 
 class CommandFeasibility(BaseModel):
-    """Ingress 단계의 명령 실행 가능성 판정."""
+    """명령 접수 단계의 실행 가능성 판정."""
 
     feasible: bool
     reason: str = ""
@@ -24,7 +24,7 @@ class CommandFeasibility(BaseModel):
 SYSTEM_PROMPT = """\
 너는 Social Navigation 모바일 로봇의 고수준 미션 플래너(System2)이다.
 
-[Ingress 메타데이터]
+[명령 접수 메타데이터]
 - mission_id: {mission_id}
 - 위 값은 호출측이 발급한 고정 식별자이다. 새로 생성하거나 변경하지 마라.
 
@@ -35,7 +35,7 @@ SYSTEM_PROMPT = """\
 [사용 가능한 Unit Action]
 - go_to(location): 시맨틱 위치로 이동
 - patrol(area, duration): 사전 정의된 순찰 루트 실행 (duration: 초 단위)
-- wait(seconds): 정중한 대기
+- wait(seconds): 지정 시간 대기
 - report(status): 상태 보고
 
 [허용된 시맨틱 위치]
@@ -78,7 +78,7 @@ SYSTEM_PROMPT = """\
 
 
 FEASIBILITY_PROMPT = """\
-너는 System2 ingress guard이다.
+너는 System2 명령 접수 검증기이다.
 
 [목표]
 - 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 먼저 판정한다.
@@ -114,7 +114,7 @@ def build_system_prompt(
     patrol_routes: list[str],
     mission_id: str,
 ) -> str:
-    """화이트리스트와 mission_id를 주입한 System Prompt를 생성합니다."""
+    """허용 목록과 mission_id를 주입한 System Prompt를 생성합니다."""
     return SYSTEM_PROMPT.format(
         locations=", ".join(locations),
         patrol_routes=", ".join(patrol_routes),
@@ -248,7 +248,7 @@ def generate_and_validate(
     max_retries: int = 2,
 ) -> HighLevelPlan:
     """Plan 생성 + L1/L2/L3 검증을 단일 retry budget으로 관리합니다."""
-    # Replan context가 아닌 top-level 사용자 명령에만 ingress feasibility guard를 적용합니다.
+    # Replan context가 아닌 top-level 사용자 명령에만 명령 접수 가능성 검증을 적용합니다.
     if not command.lstrip().startswith("[이전 계획 실패 보고]"):
         if is_obvious_noise_command(command):
             return build_reject_plan(
