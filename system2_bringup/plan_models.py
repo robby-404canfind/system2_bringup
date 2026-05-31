@@ -1,8 +1,17 @@
-"""plan_models.py — HighLevelPlan 및 Step Pydantic 모델."""
+"""plan_models.py — HighLevelPlan 및 Step Pydantic 모델 (Ch05 확장).
+
+Ch03 대비 변경:
+- BaseStep.max_duration_sec: go_to/wait용 step timeout
+- FindStep, ScanStep, FollowStep: Ch04 Perception Action 연동
+- AssessSceneStep, ResolveTargetStep, FollowQueryStep: Agentic VLA scenario 연동
+- Step union 확장
+"""
 from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
+
+# ---- Params ----
 
 class GoToParams(BaseModel):
     location: str
@@ -21,9 +30,59 @@ class ReportParams(BaseModel):
     status: str
 
 
+class FindParams(BaseModel):
+    """Ch04 /system1/find Action Goal 파라미터."""
+    target_class: str = Field(description="탐지 대상 클래스 (예: person)")
+    timeout_sec: float = Field(default=30.0, ge=5.0, le=120.0)
+    sweep_deg: float = Field(default=360.0, ge=0.0, le=720.0)
+
+
+class ScanParams(BaseModel):
+    """Ch04 /system1/scan Action Goal 파라미터."""
+    duration_sec: float = Field(default=30.0, ge=5.0, le=120.0)
+    sweep_deg: float = Field(default=360.0, ge=0.0, le=720.0)
+
+
+class FollowParams(BaseModel):
+    """Ch04 /system1/follow Action Goal 파라미터."""
+    target_class: str = Field(default="person")
+    target_id: int = Field(default=-1)
+    target_distance_m: float = Field(default=2.0, ge=0.5, le=5.0)
+    max_time_sec: float = Field(default=60.0, ge=5.0, le=180.0)
+
+
+class AssessSceneParams(BaseModel):
+    """Ch05 /system1/assess_scene Action Goal 파라미터."""
+    query: str = Field(description="장면 평가 질문")
+    timeout_sec: float = Field(default=30.0, ge=5.0, le=120.0)
+
+
+class ResolveTargetParams(BaseModel):
+    """Ch05 /system1/resolve_target Action Goal 파라미터."""
+    target_query: str = Field(description="자연어 대상 설명")
+    timeout_sec: float = Field(default=30.0, ge=5.0, le=120.0)
+
+
+class FollowQueryParams(BaseModel):
+    """자연어 대상 설명을 track id로 해석한 뒤 follow를 수행하는 고수준 파라미터."""
+    target_query: str = Field(description="자연어 대상 설명")
+    target_distance_m: float = Field(default=2.0, ge=0.5, le=5.0)
+    max_time_sec: float = Field(default=60.0, ge=5.0, le=180.0)
+    resolve_timeout_sec: float = Field(default=30.0, ge=5.0, le=120.0)
+
+
+# ---- Steps ----
+
 class BaseStep(BaseModel):
     guard: Optional[str] = Field(default=None, description="실행 전 조건 (Ch05)")
     retry: int = Field(default=0, ge=0, le=3, description="재시도 횟수")
+    max_duration_sec: Optional[float] = Field(
+        default=None,
+        ge=1.0,
+        le=180.0,
+        description="Step timeout (초). go_to/wait에 적용. "
+        "find/scan/follow는 Goal params timeout에 위임.",
+    )
 
 
 class GoToStep(BaseStep):
@@ -46,8 +105,42 @@ class ReportStep(BaseStep):
     params: ReportParams
 
 
+class FindStep(BaseStep):
+    task: Literal["find"]
+    params: FindParams
+
+
+class ScanStep(BaseStep):
+    task: Literal["scan"]
+    params: ScanParams
+
+
+class FollowStep(BaseStep):
+    task: Literal["follow"]
+    params: FollowParams
+
+
+class AssessSceneStep(BaseStep):
+    task: Literal["assess_scene"]
+    params: AssessSceneParams
+
+
+class ResolveTargetStep(BaseStep):
+    task: Literal["resolve_target"]
+    params: ResolveTargetParams
+
+
+class FollowQueryStep(BaseStep):
+    task: Literal["follow_query"]
+    params: FollowQueryParams
+
+
 Step = Annotated[
-    Union[GoToStep, PatrolStep, WaitStep, ReportStep],
+    Union[
+        GoToStep, PatrolStep, WaitStep, ReportStep,
+        FindStep, ScanStep, FollowStep,
+        AssessSceneStep, ResolveTargetStep, FollowQueryStep,
+    ],
     Field(discriminator="task"),
 ]
 

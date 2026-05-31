@@ -12,3 +12,19 @@ routes:
   lobby_loop:
     - lobby
     - corridor_a
+
+  factory_loop:
+    - box_zone_approach
+    - aisle_left
+    - loading_area
+    - aisle_right
+
+  box_inspection_loop:
+    - box_zone_approach
+    - box_zone
+    - security_checkpoint
+
+  hall_loop:
+    - hall_entry
+    - hall_mid
+    - security_checkpoint

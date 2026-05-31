@@ -33,7 +33,7 @@ class LLMClient:
     """Edge LLM(Ollama)과 Cloud LLM(OpenRouter)을 통합하는 클라이언트.
 
     동작 기준:
-    - timeout: 기본 10초. Topic 기반 명령 접수가 오래 붙잡히지 않도록 제한.
+    - timeout: 기본 10초. Service callback 1-5초 + 여유분.
     - max_retries: 기본 1회. 실패 시 한 번만 재시도.
     - 예외: 모든 백엔드 에러는 LLMClientError로 정규화.
     """

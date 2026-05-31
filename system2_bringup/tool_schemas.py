@@ -1,5 +1,16 @@
-"""tool_schemas.py — Function Calling용 Tool Definition."""
+"""tool_schemas.py — Function Calling용 Tool Definition (Ch05 확장).
+
+Ch03 대비 변경:
+    - find, scan, follow, assess_scene, resolve_target, follow_query Tool Definition 추가
+- PERCEPTION_TARGET_HINTS: LLM 안내용 클래스 힌트 (L2 검증은 미적용)
+"""
 import json
+
+# LLM이 자주 사용할 탐지 대상 힌트 (L2 허용 목록이 아닌 안내용)
+PERCEPTION_TARGET_HINTS = [
+    "person", "chair", "bottle", "cup", "laptop",
+    "backpack", "handbag", "cell phone", "book", "potted plant",
+]
 
 
 def build_tool_schemas(locations: list[str], patrol_routes: list[str]) -> list[dict]:
@@ -77,6 +88,188 @@ def build_tool_schemas(locations: list[str], patrol_routes: list[str]) -> list[d
                         "status": {"type": "string", "description": "보고 내용"}
                     },
                     "required": ["status"],
+                },
+            },
+        },
+        # ---- Ch05 추가: Perception Actions ----
+        {
+            "type": "function",
+            "function": {
+                "name": "find",
+                "description": "로봇이 주변을 회전하며 특정 대상을 찾습니다 (YOLO 기반)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_class": {
+                            "type": "string",
+                            "description": f"탐지 대상 클래스. 예: {', '.join(PERCEPTION_TARGET_HINTS[:5])}",
+                        },
+                        "timeout_sec": {
+                            "type": "number",
+                            "description": "탐색 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 120,
+                            "default": 30,
+                        },
+                        "sweep_deg": {
+                            "type": "number",
+                            "description": "회전 탐색 각도 (도)",
+                            "minimum": 0,
+                            "maximum": 720,
+                            "default": 360,
+                        },
+                    },
+                    "required": ["target_class"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "scan",
+                "description": "로봇이 주변을 회전 스캔하여 인지 가능한 모든 객체를 기록합니다",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "duration_sec": {
+                            "type": "number",
+                            "description": "스캔 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 120,
+                            "default": 30,
+                        },
+                        "sweep_deg": {
+                            "type": "number",
+                            "description": "회전 스캔 각도 (도)",
+                            "minimum": 0,
+                            "maximum": 720,
+                            "default": 360,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "follow",
+                "description": "특정 대상을 추적하여 일정 거리를 유지하며 따라갑니다",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_class": {
+                            "type": "string",
+                            "description": "추적 대상 클래스",
+                            "default": "person",
+                        },
+                        "target_id": {
+                            "type": "integer",
+                            "description": "추적 대상 YOLO ID (-1이면 첫 번째 감지 대상)",
+                            "default": -1,
+                        },
+                        "target_distance_m": {
+                            "type": "number",
+                            "description": "유지할 목표 거리 (m)",
+                            "minimum": 0.5,
+                            "maximum": 5.0,
+                            "default": 2.0,
+                        },
+                        "max_time_sec": {
+                            "type": "number",
+                            "description": "추적 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 180,
+                            "default": 60,
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "assess_scene",
+                "description": "현재 장면을 VLM으로 평가하고 수상 후보/위험도/근거를 반환합니다",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "장면 평가 질문",
+                        },
+                        "timeout_sec": {
+                            "type": "number",
+                            "description": "장면 평가 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 120,
+                            "default": 30,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "resolve_target",
+                "description": "자연어 대상 설명을 현재 보이는 person track id로 해석합니다",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_query": {
+                            "type": "string",
+                            "description": "예: 파란색 옷을 입은 사람, 왼쪽 사람",
+                        },
+                        "timeout_sec": {
+                            "type": "number",
+                            "description": "대상 식별 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 120,
+                            "default": 30,
+                        },
+                    },
+                    "required": ["target_query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "follow_query",
+                "description": "자연어 대상 설명을 track id로 해석한 뒤 해당 person을 추적합니다",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_query": {
+                            "type": "string",
+                            "description": "예: 파란색 옷을 입은 사람, 가방 든 사람",
+                        },
+                        "target_distance_m": {
+                            "type": "number",
+                            "description": "유지할 목표 거리 (m)",
+                            "minimum": 0.5,
+                            "maximum": 5.0,
+                            "default": 2.0,
+                        },
+                        "max_time_sec": {
+                            "type": "number",
+                            "description": "추적 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 180,
+                            "default": 60,
+                        },
+                        "resolve_timeout_sec": {
+                            "type": "number",
+                            "description": "대상 식별 제한 시간 (초)",
+                            "minimum": 5,
+                            "maximum": 120,
+                            "default": 30,
+                        },
+                    },
+                    "required": ["target_query"],
                 },
             },
         },

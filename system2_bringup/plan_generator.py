@@ -1,4 +1,9 @@
-"""plan_generator.py — 자연어 명령 → HighLevelPlan 생성."""
+"""plan_generator.py — 자연어 명령 -> HighLevelPlan 생성 (Ch05 확장).
+
+    Ch03 대비 변경:
+    - System Prompt에 find/scan/follow/assess_scene/follow_query 액션 설명 추가
+- Social Navigation 판단 규칙 추가
+"""
 import json
 import re
 
@@ -30,19 +35,38 @@ SYSTEM_PROMPT = """\
 
 [역할]
 - 사용자의 자연어 명령과 현재 로봇 상태를 바탕으로 HighLevelPlan JSON을 생성한다.
-- 이 계획은 System1(Nav2)이 순차적으로 실행하는 Unit Action 시퀀스이다.
+- 이 계획은 System1(Nav2)과 Perception Action이 순차적으로 실행하는 Unit Action 시퀀스이다.
 
 [사용 가능한 Unit Action]
 - go_to(location): 시맨틱 위치로 이동
 - patrol(area, duration): 사전 정의된 순찰 루트 실행 (duration: 초 단위)
 - wait(seconds): 지정 시간 대기
 - report(status): 상태 보고
+- find(target_class, timeout_sec, sweep_deg): 로봇 회전으로 대상 탐색 (YOLO 기반)
+- scan(duration_sec, sweep_deg): 주변 환경에서 인지 가능한 모든 객체 스캔 및 관찰
+- follow(target_class, target_id, target_distance_m, max_time_sec): 대상 추적
+- assess_scene(query, timeout_sec): 현재 snapshot/VLM으로 장면을 평가하고 결과를 저장
+- resolve_target(target_query, timeout_sec): 자연어 대상 설명을 person track id로 해석
+- follow_query(target_query, target_distance_m, max_time_sec, resolve_timeout_sec): resolve_target 후 기존 follow 실행
 
 [허용된 시맨틱 위치]
 {locations}
 
 [허용된 순찰 루트 ID]
 {patrol_routes}
+
+[Social Navigation 판단 규칙]
+- [Social Navigation] 섹션에 avoid_between_people가 있으면, 허용된 시맨틱 위치를 사용해 우회용 go_to() Step을 삽입하라.
+- prefer_side_pass가 있으면, 해당 방향(side)으로 우회할 수 있는 시맨틱 위치를 선택하라.
+- slow_down이 있으면, wait(3~5초) 후 원래 목적지로 go_to를 재실행하라.
+- clear_path가 있으면, 우회 없이 직진하라.
+
+[Agentic VLA 판단 규칙]
+- "수상한 사람", "이상한 사람", "박스 근처 확인" 같은 장면 판단 명령은 assess_scene(query)를 사용하라.
+- assess_scene 다음에 사용자에게 결과를 알려야 하면 report(status="latest_assessment")를 사용하라.
+- "파란색 옷", "가방 든 사람", "왼쪽 사람"처럼 자연어 대상 설명을 따라가라는 명령은 follow_query(...)를 사용하라.
+- resolve_target은 대상 식별만 보고해야 할 때 사용하고, 추적까지 필요하면 follow_query를 우선 사용하라.
+- 성별/나이/신원은 primary target key로 사용하지 말고, 옷 색상/소지품/위치/track id를 우선하라.
 
 [출력 형식]
 반드시 아래 JSON 형식으로만 응답하라. 다른 텍스트는 포함하지 마라.
@@ -59,21 +83,15 @@ SYSTEM_PROMPT = """\
 
 [안전 규칙]
 - 허용된 Unit Action만 사용하라.
-- 허용된 시맨틱 위치만 사용하라.
-- 허용된 순찰 루트 ID만 사용하라.
+- 허용된 시맨틱 위치만 사용하라 (go_to의 location).
+- 허용된 순찰 루트 ID만 사용하라 (patrol의 area).
 - steps는 1-5개로 제한하라.
 - mission_id는 제공된 값을 그대로 사용하라.
-- 사용자의 명령이 불명확하거나, 무의미한 문자열이거나, 허용된 위치/순찰 루트로 해석할 근거가 부족하면 추측하지 마라.
+- find/scan/assess_scene/resolve_target의 timeout은 120초 이하로 설정하라.
+- follow/follow_query의 추적 시간은 180초 이하로 설정하라.
+- 사용자의 명령이 불명확하거나, 무의미한 문자열이거나, 허용된 위치/순찰 루트/액션으로 해석할 근거가 부족하면 추측하지 마라.
 - 존재하지 않는 장소(예: 우주, 도서관)를 임의의 허용 위치로 치환하지 마라.
-- 이해할 수 없거나 수행 불가능한 명령은 `report(status)` 한 단계만 생성하여 재입력을 요청하라.
-
-[불명확/수행 불가 명령 처리 예시]
-- 입력: "ㅁㄴㅇㄹㅁㄴㅇㅎ"
-  출력: steps=[{{"task": "report", "params": {{"status": "명령을 이해하지 못했습니다. 다시 말씀해 주세요."}}, "retry": 0}}]
-- 입력: "우주로 가줘"
-  출력: steps=[{{"task": "report", "params": {{"status": "우주 는 현재 허용된 목적지가 아닙니다. 가능한 위치로 다시 말씀해 주세요."}}, "retry": 0}}]
-- 입력: "도서관으로 가줘"
-  출력: steps=[{{"task": "report", "params": {{"status": "도서관 은 현재 허용된 목적지가 아닙니다. 가능한 위치로 다시 말씀해 주세요."}}, "retry": 0}}]
+- 이해할 수 없거나 현재 수행 불가능한 명령은 `report(status)` 한 단계만 생성하여 재입력을 요청하라.
 """
 
 
@@ -83,9 +101,12 @@ FEASIBILITY_PROMPT = """\
 [목표]
 - 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 먼저 판정한다.
 - 실행 가능하면 feasible=true
-- 불명확/무의미/잡음 입력이거나, 현재 허용된 위치/순찰 루트로 해석할 근거가 부족하면 feasible=false
+- 불명확/무의미/잡음 입력이거나, 현재 허용된 위치/순찰 루트/액션으로 해석할 근거가 부족하면 feasible=false
 - 존재하지 않는 장소(예: 우주, 도서관)를 임의의 허용 위치로 치환하지 마라.
-- 이해 못한 명령을 그럴듯한 허용 위치로 추측하지 마라.
+- 이해 못한 명령을 그럴듯한 허용 액션으로 추측하지 마라.
+
+[사용 가능한 액션]
+- go_to, patrol, wait, report, find, scan, follow, assess_scene, resolve_target, follow_query
 
 [허용된 시맨틱 위치]
 {locations}
@@ -94,10 +115,10 @@ FEASIBILITY_PROMPT = """\
 {patrol_routes}
 
 [판정 기준]
-- "회의실로 가줘"처럼 허용 위치로 자연스럽게 해석 가능하면 feasible=true
-- "회의실 갔다가 충전소로 와"처럼 복합 명령도 해석 가능하면 feasible=true
+- 허용된 위치/액션으로 자연스럽게 해석 가능하면 feasible=true
 - "ㅁㄴㅇㄹㅁㄴㅇㅎ" 같은 잡음/오타열은 feasible=false
 - "우주로 가줘", "도서관으로 가줘"처럼 현재 시스템 범위를 벗어난 목적지는 feasible=false
+- find/scan/follow/assess_scene/follow_query를 포함한 복합 명령도 현재 액션 집합으로 해석 가능하면 feasible=true
 
 [출력 형식]
 반드시 아래 JSON 형식으로만 응답하라.
@@ -134,7 +155,7 @@ def build_feasibility_prompt(
 
 
 def build_user_prompt(command: str, context: str = "") -> str:
-    """사용자 명령 + 컨텍스트 → User Prompt."""
+    """사용자 명령 + 컨텍스트 -> User Prompt."""
     prompt = f"[명령] {command}"
     if context:
         prompt += f"\n[현재 상태]\n{context}"
@@ -147,7 +168,6 @@ def is_obvious_noise_command(command: str) -> bool:
     if not text:
         return True
 
-    # 한글 완성형/영문/숫자가 전혀 없고, 자모/공백/문장부호 위주면 잡음으로 간주
     has_hangul_syllable = bool(re.search(r"[가-힣]", text))
     has_ascii_word = bool(re.search(r"[A-Za-z0-9]", text))
     non_space = re.sub(r"\s+", "", text)
@@ -198,7 +218,7 @@ def build_reject_plan(mission_id: str, report_status: str, reason: str = "") -> 
                 {
                     "task": "report",
                     "params": {
-                        "status": report_status or "명령을 이해하지 못했습니다. 가능한 위치로 다시 말씀해 주세요.",
+                        "status": report_status or "명령을 이해하지 못했거나 현재 수행할 수 없습니다. 다시 말씀해 주세요.",
                     },
                     "retry": 0,
                 }
@@ -216,7 +236,7 @@ def generate_plan(
     mission_id: str,
     context: str = "",
 ) -> HighLevelPlan:
-    """자연어 명령 → HighLevelPlan JSON 생성."""
+    """자연어 명령 -> HighLevelPlan JSON 생성."""
     system_prompt = build_system_prompt(locations, patrol_routes, mission_id)
     messages = [
         {"role": "system", "content": system_prompt},
@@ -268,7 +288,7 @@ def generate_and_validate(
                 mission_id=mission_id,
                 report_status=(
                     feasibility.report_status
-                    or "명령을 이해하지 못했거나 현재 수행할 수 없습니다. 가능한 위치로 다시 말씀해 주세요."
+                    or "명령을 이해하지 못했거나 현재 수행할 수 없습니다. 가능한 위치나 행동으로 다시 말씀해 주세요."
                 ),
                 reason=feasibility.reason,
             )
