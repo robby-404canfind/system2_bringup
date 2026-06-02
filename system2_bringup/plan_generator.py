@@ -57,6 +57,8 @@ SYSTEM_PROMPT = """\
 
 [Social Navigation 판단 규칙]
 - [Social Navigation] 섹션에 avoid_between_people가 있으면, 허용된 시맨틱 위치를 사용해 우회용 go_to() Step을 삽입하라.
+- avoid_between_people 상황에서 목적지 이동 명령이면 반드시 `go_to(우회 위치) -> go_to(최종 목적지)` 순서로 생성하라. 우회 위치는 최종 목적지와 달라야 한다.
+- avoid_between_people를 wait로 대체하지 마라. wait는 slow_down 상황에서만 사용하라.
 - prefer_side_pass가 있으면, 해당 방향(side)으로 우회할 수 있는 시맨틱 위치를 선택하라.
 - slow_down이 있으면, wait(3~5초) 후 원래 목적지로 go_to를 재실행하라.
 - clear_path가 있으면, 우회 없이 직진하라.
@@ -265,6 +267,96 @@ def generate_plan(
     return plan.model_copy(update={"mission_id": mission_id})
 
 
+def _enforce_social_navigation_detour(
+    plan: HighLevelPlan,
+    locations: list[str],
+    context: str,
+) -> HighLevelPlan:
+    """Make avoid_between_people plans deterministic enough for lab runs.
+
+    Small local models sometimes replace the required detour with
+    go_to(destination) -> wait -> go_to(destination). For Ch05 we keep the
+    LLM-selected destination, but force a valid semantic waypoint before it.
+    """
+    if "avoid_between_people" not in context:
+        return plan
+
+    first_go_to = None
+    for index, step in enumerate(plan.steps):
+        if step.task == "go_to":
+            first_go_to = (index, step.params.location)
+            break
+
+    if first_go_to is None:
+        return plan
+
+    first_index, destination = first_go_to
+    has_prior_detour = any(
+        step.task == "go_to" and step.params.location != destination
+        for step in plan.steps[:first_index]
+    )
+    if has_prior_detour:
+        return plan
+
+    detour = _select_social_detour_location(locations, destination, context)
+    if not detour:
+        return plan
+
+    plan_data = plan.model_dump(mode="json")
+    original_steps = plan_data.get("steps", [])
+    new_steps = [
+        {
+            "task": "go_to",
+            "params": {"location": detour},
+            "retry": 1,
+        }
+    ]
+
+    destination_added = False
+    for step in original_steps:
+        task = step.get("task")
+        if task == "wait":
+            continue
+
+        if task == "go_to":
+            location = (step.get("params") or {}).get("location")
+            if location == destination:
+                if destination_added:
+                    continue
+                destination_added = True
+
+        new_steps.append(step)
+
+    plan_data["steps"] = new_steps[:5]
+    constraints = list(plan_data.get("constraints") or [])
+    if "social_detour_enforced" not in constraints:
+        constraints.append("social_detour_enforced")
+    plan_data["constraints"] = constraints
+    return HighLevelPlan.model_validate(plan_data)
+
+
+def _select_social_detour_location(
+    locations: list[str],
+    destination: str,
+    context: str,
+) -> str | None:
+    current_match = re.search(r"위치:\s*([A-Za-z0-9_]+)\s+근처", context)
+    current = current_match.group(1) if current_match else None
+    preferred = [
+        "office_entrance",
+        "lobby",
+        "workstation",
+        "pallet",
+        "fire_extinguisher",
+        "charging_station",
+    ]
+
+    for candidate in preferred + list(locations):
+        if candidate in locations and candidate not in {destination, current}:
+            return candidate
+    return None
+
+
 def generate_and_validate(
     client: LLMClient,
     command: str,
@@ -313,6 +405,11 @@ def generate_and_validate(
                 patrol_routes,
                 mission_id=mission_id,
                 context=context + feedback,
+            )
+            plan = _enforce_social_navigation_detour(
+                plan,
+                locations,
+                context + feedback,
             )
         except SchemaInvalidError as e:
             last_error = str(e)
