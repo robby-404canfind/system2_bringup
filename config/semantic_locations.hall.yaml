@@ -1,0 +1,46 @@
+# Semantic Location 정의 — hall 환경 기준
+# Ch05 System2 통합 실습에서 사용하는 단일 기준 파일
+
+locations:
+  office_entrance:
+    x: 2.950026273727417
+    y: 4.917917728424072
+    yaw: 0.04472345461712483
+    description: "오피스 입구"
+
+  cabinet:
+    x: -1.7884678840637207
+    y: 8.875083923339844
+    yaw: 1.5935028226564765
+    description: "캐비넷"
+
+  workstation:
+    x: -3.8884334564208984
+    y: 4.73431921005249
+    yaw: -3.09467865995217
+    description: "작업장"
+
+  pallet:
+    x: -1.9807870388031006
+    y: 0.10588467121124268
+    yaw: -1.5673206505055115
+    description: "팔레트"
+
+  fire_extinguisher:
+    x: -1.831502914428711
+    y: -9.198501586914062
+    yaw: -2.577554270272477
+    description: "소화기"
+
+  lobby:
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    description: "로비"
+
+  charging_station:
+    x: 2.6158790588378906
+    y: -10.073561668395996
+    yaw: 1.552486627273876
+    description: "충전 스테이션"
+

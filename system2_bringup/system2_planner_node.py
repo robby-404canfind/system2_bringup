@@ -53,8 +53,8 @@ class System2PlannerNode(Node):
             or str(Path(__file__).parent.parent / "config")
         )
 
-        # Semantic Locations
-        loc_file = config_dir / "semantic_locations.yaml"
+        # Semantic Locations: Ch05 hall 환경의 단일 기준 파일
+        loc_file = config_dir / "semantic_locations.hall.yaml"
         with open(loc_file) as f:
             loc_data = yaml.safe_load(f) or {}
         self.semantic_locations = loc_data.get("locations", {})
