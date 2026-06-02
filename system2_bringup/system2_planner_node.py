@@ -68,8 +68,14 @@ class System2PlannerNode(Node):
             self.patrol_routes = route_data.get("routes") or {}
         else:
             self.patrol_routes = {
-                "office_loop": ["office_desk_1", "corridor_a", "meeting_room"],
-                "lobby_loop": ["lobby", "corridor_a"],
+                "hall_loop": [
+                    "office_entrance",
+                    "cabinet",
+                    "workstation",
+                    "pallet",
+                    "fire_extinguisher",
+                    "charging_station",
+                ],
             }
         self.patrol_route_names = list(self.patrol_routes.keys())
 

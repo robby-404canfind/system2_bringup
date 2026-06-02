@@ -9,26 +9,18 @@ from system2_bringup.schema_validator import SchemaValidator
 
 
 LOCATIONS = [
-    "office_desk_1",
-    "meeting_room",
-    "corridor_a",
+    "office_entrance",
+    "cabinet",
+    "workstation",
+    "pallet",
+    "fire_extinguisher",
     "lobby",
     "charging_station",
-    "box_zone",
-    "box_zone_approach",
-    "aisle_left",
-    "aisle_right",
-    "loading_area",
-    "security_checkpoint",
-    "hall_entry",
-    "hall_mid",
 ]
 PATROL_ROUTES = [
-    "office_loop",
-    "lobby_loop",
-    "factory_loop",
-    "box_inspection_loop",
     "hall_loop",
+    "hall_short_loop",
+    "safety_inspection_loop",
 ]
 
 
@@ -101,16 +93,16 @@ class Ch05ContractTest(unittest.TestCase):
             {
                 "version": "1.0.0",
                 "mission_id": "test-assess",
-                "intent": "inspect boxes and report suspicious person",
+                "intent": "inspect cabinet and report suspicious person",
                 "steps": [
                     {
                         "task": "go_to",
-                        "params": {"location": "box_zone_approach"},
+                        "params": {"location": "cabinet"},
                     },
                     {
                         "task": "assess_scene",
                         "params": {
-                            "query": "suspicious person near boxes",
+                            "query": "suspicious person near cabinet",
                             "timeout_sec": 30,
                         },
                     },

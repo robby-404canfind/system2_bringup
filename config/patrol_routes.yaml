@@ -1,30 +1,25 @@
-# Patrol Route 정의 — semantic location 이름을 참조합니다.
+# Patrol Route 정의 — semantic_locations.hall.yaml의 이름을 참조합니다.
 #
-# Ch03에서는 route ID 허용 목록과 개념 분리를 보여주기 위한 기본 예시만 제공합니다.
-# 실제 웨이포인트 순회 로직과 route 해석은 추후 유닛에서 확장합니다.
+# Ch05 hall 통합 실습에서는 System2 prompt에 노출되는 route가 모두
+# 실제 hall semantic location으로 해석되어야 합니다.
 
 routes:
-  office_loop:
-    - office_desk_1
-    - corridor_a
-    - meeting_room
-
-  lobby_loop:
-    - lobby
-    - corridor_a
-
-  factory_loop:
-    - box_zone_approach
-    - aisle_left
-    - loading_area
-    - aisle_right
-
-  box_inspection_loop:
-    - box_zone_approach
-    - box_zone
-    - security_checkpoint
-
   hall_loop:
-    - hall_entry
-    - hall_mid
-    - security_checkpoint
+    - office_entrance
+    - cabinet
+    - workstation
+    - pallet
+    - fire_extinguisher
+    - charging_station
+
+  hall_short_loop:
+    - office_entrance
+    - cabinet
+    - workstation
+    - lobby
+
+  safety_inspection_loop:
+    - office_entrance
+    - pallet
+    - fire_extinguisher
+    - charging_station
