@@ -11,14 +11,14 @@ default_backend: ollama
 backends:
   ollama:
     model: "qwen2.5:7b"
-    timeout: 10.0
+    timeout: 60.0
     max_retries: 1
     supports_tools: null  # null = 미확인, true/false = 명시적
     supports_structured_output: false
 
   openrouter:
     model: "openai/gpt-oss-120b:free"
-    timeout: 10.0
+    timeout: 60.0
     max_retries: 1
     supports_tools: null
     supports_structured_output: false

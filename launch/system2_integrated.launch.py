@@ -1,12 +1,13 @@
-"""system2_integrated.launch.py — Ch05 통합 Launch.
+"""system2_integrated.launch.py - Ch05 System2 planner/action launch.
 
-Ch04 Perception 스택 + Perception ActionServer + System2 Planner를 실행합니다.
+Perception ActionServer와 System2 Planner를 실행합니다.
 시뮬레이션(Webots + Nav2)은 HuNavSim Docker 메뉴에서 별도로 시작합니다.
+YOLO detector와 perception context builder까지 함께 실행하려면
+system2_full_stack.launch.py 또는 agentic_vla_system.launch.py를 사용합니다.
 
 실행 순서:
-  1) HuNavSim Docker: ./run-hunav_webots.bash → agents_office.yaml 선택
-  2) Perception 스택: ros2 launch perception_bringup perception.launch.py
-  3) 이 launch 파일: ros2 launch system2_bringup system2_integrated.launch.py
+  1) HuNavSim Docker: ./run-hunav_webots.bash -> hall 시나리오 선택
+  2) ros2 launch system2_bringup system2_full_stack.launch.py
 """
 
 import os
@@ -45,8 +46,7 @@ def generate_launch_description():
                 description="Fallback 귀환 위치",
             ),
             # ---- Ch04/Ch05 Perception Action Servers ----
-            # perception.launch.py는 별도 실행 (YOLO + VLM Context Builder)
-            # 여기서는 find/scan/follow와 assess_scene/resolve_target ActionServer를 실행
+            # system2_full_stack.launch.py에서 YOLO + Context Builder와 함께 포함됨
             Node(
                 package="perception_bringup",
                 executable="find_node",

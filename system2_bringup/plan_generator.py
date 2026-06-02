@@ -62,6 +62,8 @@ SYSTEM_PROMPT = """\
 - clear_path가 있으면, 우회 없이 직진하라.
 
 [Agentic VLA 판단 규칙]
+- "사람", "인물", "person"을 찾아달라는 명령은 YOLO class 기준 find(target_class="person")으로 해석하라.
+- "찾아줘", "찾아봐", "탐색해"는 find만 사용하고, "따라가", "추적해", "follow"가 있을 때만 follow 또는 follow_query를 사용하라.
 - "수상한 사람", "이상한 사람", "박스 근처 확인" 같은 장면 판단 명령은 assess_scene(query)를 사용하라.
 - assess_scene 다음에 사용자에게 결과를 알려야 하면 report(status="latest_assessment")를 사용하라.
 - "파란색 옷", "가방 든 사람", "왼쪽 사람"처럼 자연어 대상 설명을 따라가라는 명령은 follow_query(...)를 사용하라.
@@ -115,6 +117,8 @@ FEASIBILITY_PROMPT = """\
 {patrol_routes}
 
 [판정 기준]
+- "사람을 찾아줘", "인물을 찾아줘", "find person"은 find(target_class="person")으로 실행 가능한 명령이다.
+- "찾아줘" 계열 명령은 추적 명령이 아니므로 follow 없이도 실행 가능하다.
 - 허용된 위치/액션으로 자연스럽게 해석 가능하면 feasible=true
 - "ㅁㄴㅇㄹㅁㄴㅇㅎ" 같은 잡음/오타열은 feasible=false
 - "우주로 가줘", "도서관으로 가줘"처럼 현재 시스템 범위를 벗어난 목적지는 feasible=false
@@ -195,6 +199,8 @@ def classify_command_feasibility(
         response = client.chat(
             messages=messages,
             response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=300,
         )
         raw = response.choices[0].message.content
         return CommandFeasibility.model_validate(json.loads(raw))
@@ -246,6 +252,8 @@ def generate_plan(
     response = client.chat(
         messages=messages,
         response_format={"type": "json_object"},
+        temperature=0,
+        max_tokens=800,
     )
     raw = response.choices[0].message.content
 
