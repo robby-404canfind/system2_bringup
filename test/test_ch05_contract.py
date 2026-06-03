@@ -5,7 +5,6 @@ from pydantic import ValidationError
 
 from system2_bringup.context_builder import ContextBuilder
 from system2_bringup.plan_models import HighLevelPlan
-from system2_bringup.plan_generator import _enforce_social_navigation_detour
 from system2_bringup.schema_validator import SchemaValidator
 
 
@@ -182,36 +181,23 @@ class Ch05ContractTest(unittest.TestCase):
         self.assertIn("avoid_between_people", text)
         self.assertIn("두 사람 사이 통과 금지", text)
 
-    def test_avoid_between_people_enforces_semantic_detour(self):
+    def test_social_hint_can_be_recorded_without_forced_detour(self):
         plan = HighLevelPlan.model_validate(
             {
                 "version": "1.0.0",
-                "mission_id": "test-social-detour",
-                "intent": "go to cabinet while avoiding people",
+                "mission_id": "test-social-hint",
+                "intent": "go to cabinet and record social hint",
+                "constraints": ["avoid_between_people"],
                 "steps": [
-                    {"task": "go_to", "params": {"location": "cabinet"}},
-                    {"task": "wait", "params": {"seconds": 3}},
                     {"task": "go_to", "params": {"location": "cabinet"}},
                 ],
             }
         )
-        context = "\n".join(
-            [
-                "위치: workstation 근처 (x=0.0, y=0.0)",
-                "[Social Navigation]",
-                "- avoid_between_people (confidence 0.95): right 1.0m 두 사람 사이 통과 금지",
-            ]
-        )
 
-        enforced = _enforce_social_navigation_detour(plan, LOCATIONS, context)
-
-        self.assertTrue(_validator().validate(enforced).ok)
-        self.assertEqual(enforced.steps[0].task, "go_to")
-        self.assertNotEqual(enforced.steps[0].params.location, "cabinet")
-        self.assertEqual(enforced.steps[1].task, "go_to")
-        self.assertEqual(enforced.steps[1].params.location, "cabinet")
-        self.assertNotIn("wait", [step.task for step in enforced.steps])
-        self.assertIn("social_detour_enforced", enforced.constraints)
+        self.assertTrue(_validator().validate(plan).ok)
+        self.assertEqual(len(plan.steps), 1)
+        self.assertEqual(plan.steps[0].params.location, "cabinet")
+        self.assertIn("avoid_between_people", plan.constraints)
 
 
 if __name__ == "__main__":

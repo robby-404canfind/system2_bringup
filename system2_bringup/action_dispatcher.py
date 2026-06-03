@@ -51,6 +51,7 @@ class ActionDispatcher:
         resolve_target_client=None,
         status_callback=None,
         report_callback=None,
+        snapshot_callback=None,
     ):
         self.nav = nav2_navigator
         self._node = node
@@ -61,6 +62,7 @@ class ActionDispatcher:
         self._resolve_target_client = resolve_target_client
         self.status_cb = status_callback or (lambda msg: print(f"[status] {msg}"))
         self.report_cb = report_callback or self.status_cb
+        self.snapshot_cb = snapshot_callback
         self._last_assessment_message = ""
         self._last_assessment_json = ""
         self._last_target_message = ""
@@ -219,8 +221,32 @@ class ActionDispatcher:
             status = self._last_assessment_message or "아직 장면 평가 결과가 없습니다."
         elif status in {"latest_target", "target_result"}:
             status = self._last_target_message or "아직 대상 식별 결과가 없습니다."
-        self.report_cb(status)
+        report_text = status
+        if self.snapshot_cb is not None:
+            snapshot = self.snapshot_cb(
+                reason="report",
+                message=report_text,
+                mission_id=self._current_mission_id,
+            )
+            snapshot_text = self._format_snapshot_for_report(snapshot)
+            if snapshot_text:
+                report_text = f"{report_text}\n{snapshot_text}"
+        self.report_cb(report_text)
         return ActionResult(success=True, message=f"report({status}) publish")
+
+    @staticmethod
+    def _format_snapshot_for_report(snapshot: dict) -> str:
+        if not isinstance(snapshot, dict) or not snapshot:
+            return ""
+        saved_files = snapshot.get("saved_files") or {}
+        if not isinstance(saved_files, dict) or not saved_files:
+            return ""
+        parts = ["snapshot:"]
+        for key in ("debug", "raw", "metadata"):
+            value = saved_files.get(key)
+            if value:
+                parts.append(f"{key}={value}")
+        return " ".join(parts)
 
     # ---- Ch05 추가: Perception Action 핸들러 ----
 

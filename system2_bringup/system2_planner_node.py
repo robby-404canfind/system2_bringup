@@ -12,6 +12,8 @@ Ch03 대비 변경:
 """
 from pathlib import Path
 from threading import Thread
+import json
+import time
 from uuid import uuid4
 
 import yaml
@@ -111,6 +113,11 @@ class System2PlannerNode(Node):
         self.result_pub = self.create_publisher(
             String, "/system2/mission_result", 10
         )
+        self.debug_state_pub = self.create_publisher(String, "/system2/debug_state", 10)
+        self.snapshot_request_pub = self.create_publisher(
+            String, "/perception/snapshot/request", 10
+        )
+        self._latest_snapshot_info: dict = {}
 
         # ---- LLM Client + Validator (Ch03 동일) ----
         self.llm_client = LLMClient(
@@ -153,6 +160,7 @@ class System2PlannerNode(Node):
             resolve_target_client=self._resolve_target_client,
             status_callback=lambda msg: self.status_pub.publish(String(data=msg)),
             report_callback=lambda msg: self.report_pub.publish(String(data=msg)),
+            snapshot_callback=self._request_snapshot_and_wait,
         )
 
         # ---- Context Builder (Ch03 확장) ----
@@ -163,6 +171,9 @@ class System2PlannerNode(Node):
         # ---- Ch05: Perception 구독 ----
         self.perception_sub = self.create_subscription(
             String, "/perception/context/raw", self._perception_cb, 10
+        )
+        self.snapshot_info_sub = self.create_subscription(
+            String, "/perception/snapshot/info", self._snapshot_info_cb, 10
         )
 
         # ---- Ch05: AMCL Pose 구독 ----
@@ -188,6 +199,15 @@ class System2PlannerNode(Node):
     def _perception_cb(self, msg: String):
         """Perception context 업데이트."""
         self.context_builder.update_perception(msg.data)
+
+    def _snapshot_info_cb(self, msg: String):
+        """Perception snapshot 저장/메타데이터 응답을 보관합니다."""
+        try:
+            info = json.loads(msg.data) if msg.data else {}
+        except json.JSONDecodeError:
+            return
+        if isinstance(info, dict):
+            self._latest_snapshot_info = info
 
     def _amcl_cb(self, msg: PoseWithCovarianceStamped):
         """AMCL pose -> ContextBuilder 위치 업데이트."""
@@ -230,6 +250,7 @@ class System2PlannerNode(Node):
 
         self.plan_pub.publish(String(data=plan.model_dump_json()))
         self.get_logger().info(f"Plan 생성 완료: {plan.intent}")
+        self._publish_debug_state(plan, phase="planned", current_step_index=-1)
 
         self._executor_thread = Thread(
             target=self._execute_plan,
@@ -244,6 +265,7 @@ class System2PlannerNode(Node):
         """백그라운드에서 Step을 순차 실행합니다."""
         self.status_pub.publish(String(data=f"mission_start: {plan.mission_id}"))
         self.context_builder.start_mission(len(plan.steps))
+        self._publish_debug_state(plan, phase="mission_start", current_step_index=-1)
 
         for i, step in enumerate(plan.steps):
             self.status_pub.publish(
@@ -252,14 +274,27 @@ class System2PlannerNode(Node):
                     f"{step.task}({step.params})"
                 )
             )
+            self._publish_debug_state(plan, phase="executing", current_step_index=i)
 
             result = None
             for attempt in range(step.retry + 1):
                 result = self.dispatcher.dispatch(step, mission_id=plan.mission_id)
                 if result.success:
                     self.context_builder.record_success(step, result)
+                    self._publish_debug_state(
+                        plan,
+                        phase="step_succeeded",
+                        current_step_index=i,
+                        last_result=result.message,
+                    )
                     break
                 self.context_builder.record_failure(step, result, attempt)
+                self._publish_debug_state(
+                    plan,
+                    phase="step_failed",
+                    current_step_index=i,
+                    last_result=result.message,
+                )
                 self.get_logger().warn(
                     f"Step {i} 실패 (시도 {attempt + 1}/{step.retry + 1}): "
                     f"{result.message}"
@@ -277,6 +312,12 @@ class System2PlannerNode(Node):
                     return
 
                 self.status_pub.publish(String(data="replanning..."))
+                self._publish_debug_state(
+                    plan,
+                    phase="replanning",
+                    current_step_index=i,
+                    last_result=result.message if result else "",
+                )
                 self.get_logger().info("Replan 시작...")
                 replan_context = self.context_builder.build_replan_context(
                     step, result
@@ -300,6 +341,11 @@ class System2PlannerNode(Node):
                 return
 
         self.result_pub.publish(String(data=f"mission_completed: {plan.mission_id}"))
+        self._publish_debug_state(
+            plan,
+            phase="mission_completed",
+            current_step_index=len(plan.steps) - 1,
+        )
         self.get_logger().info(f"미션 완료: {plan.mission_id} ({plan.intent})")
 
     # ---- Ch05: go_home fallback ----
@@ -317,6 +363,64 @@ class System2PlannerNode(Node):
                 self.get_logger().error(f"go_home('{home}') 실패")
         except Exception as e:
             self.get_logger().error(f"go_home('{home}') 에러: {e}")
+
+    def _publish_debug_state(
+        self,
+        plan: HighLevelPlan,
+        phase: str,
+        current_step_index: int,
+        last_result: str = "",
+    ) -> None:
+        """Publish a compact machine-readable mission state for debug overlays."""
+        steps = [step.model_dump(mode="json") for step in plan.steps]
+        current_step = (
+            steps[current_step_index]
+            if 0 <= current_step_index < len(steps)
+            else {}
+        )
+        payload = {
+            "mission_id": plan.mission_id,
+            "intent": plan.intent,
+            "phase": phase,
+            "current_step_index": current_step_index,
+            "total_steps": len(steps),
+            "current_step": current_step,
+            "plan_steps": steps,
+            "last_result": last_result,
+            "updated_at_unix_sec": time.time(),
+        }
+        self.debug_state_pub.publish(
+            String(data=json.dumps(payload, ensure_ascii=False))
+        )
+
+    def _request_snapshot_and_wait(
+        self,
+        reason: str,
+        message: str = "",
+        timeout_sec: float = 2.0,
+        mission_id: str = "",
+    ) -> dict:
+        """Ask PerceptionContextBuilder to save a snapshot and wait briefly."""
+        request_id = f"snap-{uuid4().hex[:8]}"
+        payload = {
+            "snapshot_id": request_id,
+            "mission_id": mission_id,
+            "request_id": request_id,
+            "requester": "system2_planner",
+            "reason": reason,
+            "message": message,
+        }
+        self.snapshot_request_pub.publish(
+            String(data=json.dumps(payload, ensure_ascii=False))
+        )
+
+        deadline = time.time() + timeout_sec
+        while rclpy.ok() and time.time() < deadline:
+            info = self._latest_snapshot_info
+            if isinstance(info, dict) and info.get("request_id") == request_id:
+                return info
+            time.sleep(0.05)
+        return {}
 
 
 def main():
