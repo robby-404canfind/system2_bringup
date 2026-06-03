@@ -266,6 +266,7 @@ def generate_plan(
 
     plan = plan.model_copy(update={"mission_id": mission_id})
     plan = prefer_follow_query_for_natural_target(command, plan)
+    plan = prefer_follow_duration_for_natural_target(command, plan)
     return prefer_resolve_target_for_visible_target_report(command, plan)
 
 
@@ -339,6 +340,89 @@ def prefer_follow_query_for_natural_target(
     return HighLevelPlan.model_validate(data)
 
 
+def prefer_follow_duration_for_natural_target(
+    command: str,
+    plan: HighLevelPlan,
+) -> HighLevelPlan:
+    """자연어 추적 명령의 대상/지속 시간을 follow_query 파라미터로 보존합니다.
+
+    LLM이 "5초 동안 따라가"를 `follow_query(max_time_sec=120) -> wait(5)`로
+    분리하는 경우가 있습니다. 실제 추적 제한 시간은 wait가 아니라
+    follow_query.max_time_sec에 들어가야 합니다.
+    """
+    if not _should_use_follow_query(command):
+        return plan
+
+    duration_sec = _extract_duration_sec(command)
+    target_query = _extract_target_query(command)
+    data = plan.model_dump(mode="json")
+    steps = data.get("steps", [])
+    normalized_steps = []
+    changed = False
+    previous_was_follow = False
+    explicit_wait_requested = bool(re.search(r"(기다|대기|wait)", command, re.I))
+
+    for idx, step in enumerate(steps):
+        task = step.get("task")
+        next_task = steps[idx + 1].get("task") if idx + 1 < len(steps) else None
+        if task in {"resolve_target", "find", "scan"} and next_task == "follow_query":
+            changed = True
+            previous_was_follow = False
+            continue
+
+        if (
+            task == "wait"
+            and next_task in {"follow_query", "follow"}
+            and duration_sec is not None
+            and not explicit_wait_requested
+            and 0 < float((step.get("params") or {}).get("seconds", 0)) <= 5
+        ):
+            changed = True
+            previous_was_follow = False
+            continue
+
+        if task in {"follow_query", "follow"}:
+            step = dict(step)
+            params = dict(step.get("params") or {})
+            if task == "follow_query":
+                current_query = str(params.get("target_query", "")).strip()
+                if _looks_like_model_inferred_track_query(current_query):
+                    params["target_query"] = target_query
+                    changed = True
+            if duration_sec is not None:
+                params["max_time_sec"] = duration_sec
+                changed = True
+            step["params"] = params
+            normalized_steps.append(step)
+            previous_was_follow = True
+            continue
+
+        if (
+            task == "wait"
+            and previous_was_follow
+            and duration_sec is not None
+            and int((step.get("params") or {}).get("seconds", -1)) == int(duration_sec)
+        ):
+            changed = True
+            previous_was_follow = False
+            continue
+
+        normalized_steps.append(step)
+        previous_was_follow = False
+
+    if not changed:
+        return plan
+
+    data["steps"] = normalized_steps
+    constraints = list(data.get("constraints") or [])
+    if duration_sec is not None and "natural_follow_duration" not in constraints:
+        constraints.append("natural_follow_duration")
+    if "natural_target_follow_query" not in constraints:
+        constraints.append("natural_target_follow_query")
+    data["constraints"] = constraints
+    return HighLevelPlan.model_validate(data)
+
+
 def _should_use_follow_query(command: str) -> bool:
     text = command.strip().lower()
     if not re.search(r"(따라|추적|follow)", text):
@@ -350,6 +434,24 @@ def _should_use_follow_query(command: str) -> bool:
             r"(화면|오른쪽|왼쪽|좌측|우측|중앙|가운데|파란|빨간|노란|초록|검은|흰|옷|가방|모자|박스)",
             command,
         )
+    )
+
+
+def _extract_duration_sec(command: str) -> float | None:
+    text = command.strip().lower()
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(초|sec|secs|second|seconds|s\b)", text)
+    if match:
+        return max(5.0, min(180.0, float(match.group(1))))
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(분|min|mins|minute|minutes)", text)
+    if match:
+        return max(5.0, min(180.0, float(match.group(1)) * 60.0))
+    return None
+
+
+def _looks_like_model_inferred_track_query(target_query: str) -> bool:
+    return bool(
+        re.search(r"(track\s*id|target\s*id|person\s*id|id\s*[=:]?\s*\d+)", target_query, re.I)
+        or re.fullmatch(r"(person|사람)\s*#?\d+", target_query.strip(), re.I)
     )
 
 

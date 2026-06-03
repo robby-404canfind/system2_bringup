@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from system2_bringup.context_builder import ContextBuilder
 from system2_bringup.plan_models import HighLevelPlan
 from system2_bringup.plan_generator import (
+    prefer_follow_duration_for_natural_target,
     prefer_follow_query_for_natural_target,
     prefer_resolve_target_for_visible_target_report,
 )
@@ -209,6 +210,105 @@ class Ch05ContractTest(unittest.TestCase):
         )
 
         self.assertEqual(normalized.steps[0].task, "follow")
+
+    def test_follow_query_duration_is_normalized_from_korean_command(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-follow-duration",
+                "intent": "follow visible person",
+                "steps": [
+                    {
+                        "task": "follow_query",
+                        "params": {
+                            "target_query": "person id=38",
+                            "target_distance_m": 1.5,
+                            "max_time_sec": 120,
+                            "resolve_timeout_sec": 60,
+                        },
+                    },
+                    {"task": "wait", "params": {"seconds": 5}},
+                ],
+            }
+        )
+
+        normalized = prefer_follow_duration_for_natural_target(
+            "화면 중앙에 있는 사람을 5초 동안 일정 거리 두고 따라가줘",
+            plan,
+        )
+
+        self.assertEqual(len(normalized.steps), 1)
+        self.assertEqual(normalized.steps[0].task, "follow_query")
+        self.assertEqual(normalized.steps[0].params.target_query, "화면 중앙에 있는 사람")
+        self.assertEqual(normalized.steps[0].params.max_time_sec, 5)
+        self.assertIn("natural_follow_duration", normalized.constraints)
+
+    def test_follow_query_removes_unrequested_pre_wait(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-follow-pre-wait",
+                "intent": "follow visible person",
+                "steps": [
+                    {"task": "wait", "params": {"seconds": 3}},
+                    {
+                        "task": "follow_query",
+                        "params": {
+                            "target_query": "화면 중앙에 있는 사람",
+                            "target_distance_m": 1.0,
+                            "max_time_sec": 120,
+                            "resolve_timeout_sec": 30,
+                        },
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_follow_duration_for_natural_target(
+            "화면 중앙에 있는 사람을 5초 동안 일정 거리 두고 따라가줘",
+            plan,
+        )
+
+        self.assertEqual(len(normalized.steps), 1)
+        self.assertEqual(normalized.steps[0].task, "follow_query")
+        self.assertEqual(normalized.steps[0].params.max_time_sec, 5)
+
+    def test_follow_query_removes_redundant_pre_resolve(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-follow-pre-resolve",
+                "intent": "follow visible person",
+                "steps": [
+                    {
+                        "task": "resolve_target",
+                        "params": {
+                            "target_query": "person (id=10)",
+                            "timeout_sec": 30,
+                        },
+                    },
+                    {
+                        "task": "follow_query",
+                        "params": {
+                            "target_query": "화면 중앙에 있는 사람",
+                            "target_distance_m": 2.0,
+                            "max_time_sec": 120,
+                            "resolve_timeout_sec": 30,
+                        },
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_follow_duration_for_natural_target(
+            "화면 중앙에 있는 사람을 5초 동안 일정 거리 두고 따라가줘",
+            plan,
+        )
+
+        self.assertEqual(len(normalized.steps), 1)
+        self.assertEqual(normalized.steps[0].task, "follow_query")
+        self.assertEqual(normalized.steps[0].params.target_query, "화면 중앙에 있는 사람")
+        self.assertEqual(normalized.steps[0].params.max_time_sec, 5)
 
     def test_visible_target_report_is_normalized_to_resolve_target(self):
         plan = HighLevelPlan.model_validate(
