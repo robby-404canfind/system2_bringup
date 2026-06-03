@@ -5,6 +5,10 @@ from pydantic import ValidationError
 
 from system2_bringup.context_builder import ContextBuilder
 from system2_bringup.plan_models import HighLevelPlan
+from system2_bringup.plan_generator import (
+    prefer_follow_query_for_natural_target,
+    prefer_resolve_target_for_visible_target_report,
+)
 from system2_bringup.schema_validator import SchemaValidator
 
 
@@ -139,6 +143,135 @@ class Ch05ContractTest(unittest.TestCase):
 
         self.assertTrue(_validator().validate(plan).ok)
         self.assertEqual(plan.steps[0].params.target_query, "person wearing blue clothes")
+
+    def test_natural_target_follow_is_normalized_to_follow_query(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-normalize-follow",
+                "intent": "follow visible person",
+                "steps": [
+                    {
+                        "task": "find",
+                        "params": {
+                            "target_class": "person",
+                            "timeout_sec": 30,
+                            "sweep_deg": 60,
+                        },
+                    },
+                    {
+                        "task": "follow",
+                        "params": {
+                            "target_class": "person",
+                            "target_id": 11,
+                            "target_distance_m": 2.0,
+                            "max_time_sec": 5,
+                        },
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_follow_query_for_natural_target(
+            "화면 오른쪽에 있는 사람을 먼저 식별한 다음 5초 동안 일정 거리 두고 따라가줘",
+            plan,
+        )
+
+        self.assertEqual(len(normalized.steps), 1)
+        self.assertEqual(normalized.steps[0].task, "follow_query")
+        self.assertIn("화면 오른쪽에 있는 사람", normalized.steps[0].params.target_query)
+        self.assertEqual(normalized.steps[0].params.max_time_sec, 5)
+        self.assertIn("natural_target_follow_query", normalized.constraints)
+
+    def test_explicit_track_id_follow_is_not_normalized(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-explicit-id-follow",
+                "intent": "follow explicit id",
+                "steps": [
+                    {
+                        "task": "follow",
+                        "params": {
+                            "target_class": "person",
+                            "target_id": 11,
+                            "target_distance_m": 2.0,
+                            "max_time_sec": 5,
+                        },
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_follow_query_for_natural_target(
+            "track id 11번 사람을 5초 동안 따라가줘",
+            plan,
+        )
+
+        self.assertEqual(normalized.steps[0].task, "follow")
+
+    def test_visible_target_report_is_normalized_to_resolve_target(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-visible-target-report",
+                "intent": "identify center person",
+                "steps": [
+                    {
+                        "task": "assess_scene",
+                        "params": {
+                            "query": "화면 중앙에 있는 사람은 누구인가",
+                            "timeout_sec": 30,
+                        },
+                    },
+                    {
+                        "task": "report",
+                        "params": {"status": "latest_assessment"},
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_resolve_target_for_visible_target_report(
+            "화면 중앙에 있는 사람이 누구인지 확인해서 알려줘",
+            plan,
+        )
+
+        self.assertEqual(normalized.steps[0].task, "resolve_target")
+        self.assertIn("화면 중앙에 있는 사람", normalized.steps[0].params.target_query)
+        self.assertEqual(normalized.steps[1].task, "report")
+        self.assertEqual(normalized.steps[1].params.status, "latest_target")
+        self.assertIn("visible_target_resolve", normalized.constraints)
+
+    def test_suspicious_scene_report_is_not_target_normalized(self):
+        plan = HighLevelPlan.model_validate(
+            {
+                "version": "1.0.0",
+                "mission_id": "test-suspicious-report",
+                "intent": "check suspicious person",
+                "steps": [
+                    {
+                        "task": "assess_scene",
+                        "params": {
+                            "query": "수상한 사람이 있는지 확인",
+                            "timeout_sec": 30,
+                        },
+                    },
+                    {
+                        "task": "report",
+                        "params": {"status": "latest_assessment"},
+                    },
+                ],
+            }
+        )
+
+        normalized = prefer_resolve_target_for_visible_target_report(
+            "화면 중앙에 수상한 사람이 있는지 확인해서 알려줘",
+            plan,
+        )
+
+        self.assertEqual(normalized.steps[0].task, "assess_scene")
+        self.assertEqual(normalized.steps[1].params.status, "latest_assessment")
 
     def test_perception_context_text_uses_ch04_raw_shape(self):
         builder = ContextBuilder()

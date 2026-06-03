@@ -264,7 +264,241 @@ def generate_plan(
     except ValidationError as e:
         raise SchemaInvalidError(f"L1 구조 검증 실패: {e}") from e
 
-    return plan.model_copy(update={"mission_id": mission_id})
+    plan = plan.model_copy(update={"mission_id": mission_id})
+    plan = prefer_follow_query_for_natural_target(command, plan)
+    return prefer_resolve_target_for_visible_target_report(command, plan)
+
+
+def prefer_follow_query_for_natural_target(
+    command: str,
+    plan: HighLevelPlan,
+) -> HighLevelPlan:
+    """자연어 대상 추적 명령은 resolve_target 경로를 보존합니다.
+
+    LLM이 현재 Perception context의 track id를 보고
+    follow(target_id=...)로 바로 단축하는 경우가 있습니다. 수업에서는
+    자연어 target query -> track id resolve -> follow 흐름을 보여줘야 하므로,
+    위치/복장/소지품 같은 자연어 설명이 포함된 follow 명령은 follow_query로
+    정규화합니다. 사용자가 track id를 직접 지정한 경우는 예외입니다.
+    """
+    if not _should_use_follow_query(command):
+        return plan
+
+    data = plan.model_dump(mode="json")
+    steps = data.get("steps", [])
+    if not any(step.get("task") == "follow" for step in steps):
+        return plan
+
+    target_query = _extract_target_query(command)
+    normalized_steps = []
+    changed = False
+    skip_next_pre_follow = False
+
+    for idx, step in enumerate(steps):
+        task = step.get("task")
+        next_task = steps[idx + 1].get("task") if idx + 1 < len(steps) else None
+
+        if task in {"find", "scan"} and next_task == "follow":
+            skip_next_pre_follow = True
+            changed = True
+            continue
+
+        if task == "follow":
+            params = step.get("params", {})
+            replacement = {
+                "task": "follow_query",
+                "params": {
+                    "target_query": target_query,
+                    "target_distance_m": params.get("target_distance_m", 2.0),
+                    "max_time_sec": params.get("max_time_sec", 60.0),
+                    "resolve_timeout_sec": 30.0,
+                },
+                "retry": step.get("retry", 0),
+            }
+            if step.get("guard") is not None:
+                replacement["guard"] = step.get("guard")
+            if step.get("max_duration_sec") is not None:
+                replacement["max_duration_sec"] = step.get("max_duration_sec")
+            normalized_steps.append(replacement)
+            changed = True
+            skip_next_pre_follow = False
+            continue
+
+        if skip_next_pre_follow:
+            skip_next_pre_follow = False
+        normalized_steps.append(step)
+
+    if not changed:
+        return plan
+
+    data["steps"] = normalized_steps
+    constraints = list(data.get("constraints") or [])
+    if "natural_target_follow_query" not in constraints:
+        constraints.append("natural_target_follow_query")
+    data["constraints"] = constraints
+    return HighLevelPlan.model_validate(data)
+
+
+def _should_use_follow_query(command: str) -> bool:
+    text = command.strip().lower()
+    if not re.search(r"(따라|추적|follow)", text):
+        return False
+    if re.search(r"((track|target)?\s*id|트랙\s*id|아이디|번)\s*[:#=]?\s*\d+", text):
+        return False
+    return bool(
+        re.search(
+            r"(화면|오른쪽|왼쪽|좌측|우측|중앙|가운데|파란|빨간|노란|초록|검은|흰|옷|가방|모자|박스)",
+            command,
+        )
+    )
+
+
+def _extract_target_query(command: str) -> str:
+    text = command.strip()
+    splitters = [
+        "을 먼저",
+        "를 먼저",
+        "을 일정",
+        "를 일정",
+        "을 5초",
+        "를 5초",
+        "을 따라",
+        "를 따라",
+        "따라",
+        "추적",
+        "follow",
+    ]
+    for splitter in splitters:
+        if splitter in text:
+            text = text.split(splitter, 1)[0].strip()
+            break
+    return text or command.strip()
+
+
+def prefer_resolve_target_for_visible_target_report(
+    command: str,
+    plan: HighLevelPlan,
+) -> HighLevelPlan:
+    """보이는 대상 식별/보고 명령은 resolve_target 경로를 보존합니다."""
+    if not _should_use_resolve_target_report(command):
+        return plan
+
+    data = plan.model_dump(mode="json")
+    steps = data.get("steps", [])
+    if any(step.get("task") in {"follow", "follow_query"} for step in steps):
+        return plan
+
+    target_query = _extract_visible_target_query(command)
+    normalized_steps = []
+    inserted_resolve = False
+    has_report = False
+    changed = False
+
+    for step in steps:
+        task = step.get("task")
+        if task in {"find", "scan"} and not inserted_resolve:
+            normalized_steps.append(_resolve_target_step(target_query))
+            inserted_resolve = True
+            changed = True
+            continue
+
+        if task == "assess_scene" and not inserted_resolve:
+            params = step.get("params", {})
+            normalized_steps.append(
+                _resolve_target_step(
+                    target_query,
+                    timeout_sec=params.get("timeout_sec", 30.0),
+                    retry=step.get("retry", 0),
+                )
+            )
+            inserted_resolve = True
+            changed = True
+            continue
+
+        if task == "report":
+            report_step = dict(step)
+            report_step["params"] = {"status": "latest_target"}
+            normalized_steps.append(report_step)
+            has_report = True
+            changed = True
+            continue
+
+        normalized_steps.append(step)
+
+    if not inserted_resolve:
+        normalized_steps.insert(0, _resolve_target_step(target_query))
+        changed = True
+
+    if not has_report:
+        normalized_steps.append(
+            {
+                "task": "report",
+                "params": {"status": "latest_target"},
+                "retry": 0,
+            }
+        )
+        changed = True
+
+    if not changed:
+        return plan
+
+    data["steps"] = normalized_steps[:5]
+    constraints = list(data.get("constraints") or [])
+    if "visible_target_resolve" not in constraints:
+        constraints.append("visible_target_resolve")
+    data["constraints"] = constraints
+    return HighLevelPlan.model_validate(data)
+
+
+def _should_use_resolve_target_report(command: str) -> bool:
+    text = command.strip().lower()
+    if re.search(r"(따라|추적|follow)", text):
+        return False
+    if re.search(r"(수상|이상|위험|threat|suspicious)", text):
+        return False
+    if not re.search(r"(화면|오른쪽|왼쪽|좌측|우측|중앙|가운데|파란|빨간|노란|초록|검은|흰|옷|가방|모자|박스)", command):
+        return False
+    return bool(re.search(r"(누구|식별|identify|확인해서 알려|확인하고 알려|어떤 사람)", command))
+
+
+def _extract_visible_target_query(command: str) -> str:
+    text = command.strip()
+    splitters = [
+        "이 누구",
+        "가 누구",
+        "은 누구",
+        "는 누구",
+        "을 누구",
+        "를 누구",
+        "이 어떤",
+        "가 어떤",
+        "확인해서",
+        "확인하고",
+        "식별",
+        "identify",
+        "알려",
+    ]
+    for splitter in splitters:
+        if splitter in text:
+            text = text.split(splitter, 1)[0].strip()
+            break
+    return text or command.strip()
+
+
+def _resolve_target_step(
+    target_query: str,
+    *,
+    timeout_sec: float = 30.0,
+    retry: int = 0,
+) -> dict:
+    return {
+        "task": "resolve_target",
+        "params": {
+            "target_query": target_query,
+            "timeout_sec": timeout_sec,
+        },
+        "retry": retry,
+    }
 
 
 def generate_and_validate(
