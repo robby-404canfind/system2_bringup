@@ -1,12 +1,15 @@
 """system2_integrated.launch.py - Ch05 System2 planner/action launch.
 
 Perception ActionServer와 System2 Planner를 실행합니다.
-시뮬레이션(Webots + Nav2)은 HuNavSim Docker 메뉴에서 별도로 시작합니다.
+시뮬레이션(Webots + Nav2)은 컨테이너 내부에서 별도로 시작합니다.
 YOLO detector와 perception context builder까지 함께 실행하려면
 system2_full_stack.launch.py 또는 agentic_vla_system.launch.py를 사용합니다.
 
 실행 순서:
-  1) HuNavSim Docker: ./run-hunav_webots.bash -> hall 시나리오 선택
+  1) hunavbash
+     ros2 launch hunav_webots_wrapper hunavsim_webots.launch.py \
+       environment_name:=hall \
+       configuration_file:=agents_hall.yaml
   2) ros2 launch system2_bringup system2_full_stack.launch.py
 """
 
