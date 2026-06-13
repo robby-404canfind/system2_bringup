@@ -1,7 +1,7 @@
 """wait_node.py — wait() Unit Action helper.
 
 Ch03에서는 순수 함수형 helper만 구현합니다.
-ROS2 노드는 status_callback을 통해 /system2/status에 연결합니다.
+ROS2 노드는 status_callback으로 /system2/status에 연결합니다.
 """
 import time
 

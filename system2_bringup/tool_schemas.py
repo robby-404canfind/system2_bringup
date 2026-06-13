@@ -87,7 +87,7 @@ def call_with_tools(client, messages: list, tools: list) -> dict:
     """native FC 실험용 helper.
 
     Ch03 main path는 Structured Output입니다.
-    이 helper의 결과는 executor에 바로 넘기지 말고, 별도 검증 또는 1-step
+    이 helper의 결과는 executor에 바로 넘기지 말고 별도 검증 또는 1-step
     plan 정규화를 거쳐야 합니다.
     """
     if client.supports_tools:

@@ -23,7 +23,7 @@ class System2PlannerNode(Node):
         super().__init__("system2_planner")
 
         self.declare_parameter("config_dir", "")
-        # 비어 있으면 llm_config.yaml의 기본값을 사용하고,
+        # 비어 있으면 llm_config.yaml의 기본값을 사용하며
         # 값이 지정되면 ROS parameter가 override합니다.
         self.declare_parameter("backend", "")
         self.declare_parameter("model", "")

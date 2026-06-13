@@ -29,7 +29,7 @@ SYSTEM_PROMPT = """\
 - 위 값은 호출측이 발급한 고정 식별자이다. 새로 생성하거나 변경하지 마라.
 
 [역할]
-- 사용자의 자연어 명령과 현재 로봇 상태를 바탕으로 HighLevelPlan JSON을 생성한다.
+- 사용자의 자연어 명령과 현재 로봇 상태를 입력으로 HighLevelPlan JSON을 생성한다.
 - 이 계획은 System1(Nav2)이 순차적으로 실행하는 Unit Action 시퀀스이다.
 
 [사용 가능한 Unit Action]
@@ -45,7 +45,7 @@ SYSTEM_PROMPT = """\
 {patrol_routes}
 
 [출력 형식]
-반드시 아래 JSON 형식으로만 응답하라. 다른 텍스트는 포함하지 마라.
+응답은 아래 JSON 형식만 허용한다. 다른 텍스트는 포함하지 마라.
 {{
   "version": "1.0.0",
   "mission_id": "{mission_id}",
@@ -81,7 +81,7 @@ FEASIBILITY_PROMPT = """\
 너는 System2 명령 접수 검증기이다.
 
 [목표]
-- 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 먼저 판정한다.
+- 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 사전에 판정한다.
 - 실행 가능하면 feasible=true
 - 불명확/무의미/잡음 입력이거나, 현재 허용된 위치/순찰 루트로 해석할 근거가 부족하면 feasible=false
 - 존재하지 않는 장소(예: 우주, 도서관)를 임의의 허용 위치로 치환하지 마라.
@@ -94,13 +94,13 @@ FEASIBILITY_PROMPT = """\
 {patrol_routes}
 
 [판정 기준]
-- "회의실로 가줘"처럼 허용 위치로 자연스럽게 해석 가능하면 feasible=true
-- "회의실 갔다가 충전소로 와"처럼 복합 명령도 해석 가능하면 feasible=true
+- "회의실로 가줘"처럼 허용 위치로 자연스럽게 해석되면 feasible=true
+- "회의실 갔다가 충전소로 와"처럼 복합 명령도 해석되면 feasible=true
 - "ㅁㄴㅇㄹㅁㄴㅇㅎ" 같은 잡음/오타열은 feasible=false
 - "우주로 가줘", "도서관으로 가줘"처럼 현재 시스템 범위를 벗어난 목적지는 feasible=false
 
 [출력 형식]
-반드시 아래 JSON 형식으로만 응답하라.
+응답은 아래 JSON 형식만 허용한다.
 {{
   "feasible": true,
   "reason": "짧은 판정 이유",
@@ -147,7 +147,7 @@ def is_obvious_noise_command(command: str) -> bool:
     if not text:
         return True
 
-    # 한글 완성형/영문/숫자가 전혀 없고, 자모/공백/문장부호 위주면 잡음으로 간주
+    # 한글 완성형/영문/숫자가 전혀 없고 자모/공백/문장부호 위주면 잡음으로 간주
     has_hangul_syllable = bool(re.search(r"[가-힣]", text))
     has_ascii_word = bool(re.search(r"[A-Za-z0-9]", text))
     non_space = re.sub(r"\s+", "", text)
@@ -164,7 +164,7 @@ def classify_command_feasibility(
 ) -> CommandFeasibility | None:
     """Top-level 사용자 명령이 실행 가능한지 사전 판정합니다.
 
-    판정 실패 시 None을 반환하고, 기존 planning 경로를 계속 사용합니다.
+    판정 실패 시 None을 반환하며 기존 planning 경로를 계속 사용합니다.
     """
     messages = [
         {"role": "system", "content": build_feasibility_prompt(locations, patrol_routes)},

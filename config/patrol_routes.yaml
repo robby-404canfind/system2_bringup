@@ -1,6 +1,6 @@
 # Patrol Route 정의 — semantic location 이름을 참조합니다.
 #
-# Ch03에서는 route ID 허용 목록과 개념 분리를 보여주기 위한 기본 예시만 제공합니다.
+# Ch03에서는 route ID 허용 목록과 개념 분리를 보여주는 기본 예시만 제공합니다.
 # 실제 웨이포인트 순회 로직과 route 해석은 추후 유닛에서 확장합니다.
 
 routes:
