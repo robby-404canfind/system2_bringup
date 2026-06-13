@@ -1,7 +1,7 @@
 # Patrol Route 정의 — semantic_locations.hall.yaml의 이름을 참조합니다.
 #
-# Ch05 hall 통합 실습에서는 System2 prompt에 노출되는 route가 모두
-# 실제 hall semantic location으로 해석되어야 합니다.
+# Ch05 hall 통합 실습에서는 System2 prompt에 노출되는 route를 모두
+# 실제 hall semantic location으로 해석합니다.
 
 routes:
   hall_loop:

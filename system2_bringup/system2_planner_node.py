@@ -227,7 +227,7 @@ class System2PlannerNode(Node):
             return
 
         # 새 top-level 명령 planning에서는 이전 미션의 실행 이력을 섞지 않습니다.
-        # 현재 위치/Perception context는 유지하고, 실행 이력/진행 카운터만 초기화합니다.
+        # 현재 위치/Perception context는 유지하며 실행 이력/진행 카운터만 초기화합니다.
         self.context_builder.reset_mission_state()
 
         context = self.context_builder.build()

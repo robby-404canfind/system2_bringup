@@ -38,7 +38,7 @@ class ContextBuilder:
     def reset_mission_state(self):
         """새 top-level 명령 planning 전에 이전 미션의 실행 흔적만 초기화합니다.
 
-        현재 위치(self._robot_pose)와 perception context는 유지하고,
+        현재 위치(self._robot_pose)와 perception context는 유지하며
         실행 이력/진행 카운터만 비웁니다.
         """
         self._history.clear()

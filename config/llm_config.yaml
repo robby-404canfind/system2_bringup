@@ -2,7 +2,7 @@
 #
 # 기본 동작:
 # - system2_planner는 이 파일의 default_backend / backends[*] 값을 읽습니다.
-# - launch/ros2 run에서 backend, model 파라미터를 넘기면 그 값이 override됩니다.
+# - launch/ros2 run에서 backend, model 파라미터를 넘기면 해당 값이 override됩니다.
 # - OLLAMA_BASE_URL, OPENROUTER_API_KEY 같은 인증/접속 정보는 shell 환경변수를 사용합니다.
 
 # 기본 백엔드 (ollama | openrouter)
@@ -13,7 +13,7 @@ backends:
     model: "qwen2.5:7b"
     timeout: 60.0
     max_retries: 1
-    supports_tools: null  # null = 미확인, true/false = 명시적
+    supports_tools: null  # null = 미확인, true/false = 명시
     supports_structured_output: false
 
   openrouter:

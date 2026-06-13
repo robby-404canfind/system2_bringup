@@ -34,7 +34,7 @@ SYSTEM_PROMPT = """\
 - 위 값은 호출측이 발급한 고정 식별자이다. 새로 생성하거나 변경하지 마라.
 
 [역할]
-- 사용자의 자연어 명령과 현재 로봇 상태를 바탕으로 HighLevelPlan JSON을 생성한다.
+- 사용자의 자연어 명령과 현재 로봇 상태를 입력으로 HighLevelPlan JSON을 생성한다.
 - 이 계획은 System1(Nav2)과 Perception Action이 순차적으로 실행하는 Unit Action 시퀀스이다.
 
 [사용 가능한 Unit Action]
@@ -60,20 +60,20 @@ SYSTEM_PROMPT = """\
 - avoid_between_people 또는 prefer_side_pass가 있으면 constraints에 해당 hint type을 기록하라.
 - 기본 실습에서는 우회 경유지 선택 전략을 수강생이 설계하므로, social_hints만으로 임의의 go_to 경유지를 자동 삽입하지 마라.
 - 사용자가 명시적으로 "우회해서", "경유해서", "detour" 같은 전략 실행을 지시한 경우에만 허용된 시맨틱 위치 안에서 경유지를 선택하라.
-- slow_down이 있으면 wait(3~5초)를 사용할 수 있다.
+- slow_down이 있으면 필요 시 wait(3~5초)를 넣어라.
 - clear_path가 있으면 constraints에 clear_path를 기록하고 원래 목적지를 유지하라.
 
 [Agentic VLA 판단 규칙]
 - "사람", "인물", "person"을 찾아달라는 명령은 YOLO class 기준 find(target_class="person")으로 해석하라.
-- "찾아줘", "찾아봐", "탐색해"는 find만 사용하고, "따라가", "추적해", "follow"가 있을 때만 follow 또는 follow_query를 사용하라.
+- "찾아줘", "찾아봐", "탐색해"는 find만 사용하고 "따라가", "추적해", "follow"가 있을 때만 follow 또는 follow_query를 사용하라.
 - "수상한 사람", "이상한 사람", "박스 근처 확인" 같은 장면 판단 명령은 assess_scene(query)를 사용하라.
 - assess_scene 다음에 사용자에게 결과를 알려야 하면 report(status="latest_assessment")를 사용하라.
 - "파란색 옷", "가방 든 사람", "왼쪽 사람"처럼 자연어 대상 설명을 따라가라는 명령은 follow_query(...)를 사용하라.
-- resolve_target은 대상 식별만 보고해야 할 때 사용하고, 추적까지 필요하면 follow_query를 우선 사용하라.
-- 성별/나이/신원은 primary target key로 사용하지 말고, 옷 색상/소지품/위치/track id를 우선하라.
+- resolve_target은 대상 식별만 보고할 때 사용하고 추적까지 필요하면 follow_query를 우선 사용하라.
+- 성별/나이/신원은 primary target key로 사용하지 말고 옷 색상/소지품/위치/track id를 우선하라.
 
 [출력 형식]
-반드시 아래 JSON 형식으로만 응답하라. 다른 텍스트는 포함하지 마라.
+응답은 아래 JSON 형식만 허용한다. 다른 텍스트는 포함하지 마라.
 {{
   "version": "1.0.0",
   "mission_id": "{mission_id}",
@@ -103,7 +103,7 @@ FEASIBILITY_PROMPT = """\
 너는 System2 명령 접수 검증기이다.
 
 [목표]
-- 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 먼저 판정한다.
+- 사용자의 자연어 명령이 현재 시스템에서 실행 가능한지 사전에 판정한다.
 - 실행 가능하면 feasible=true
 - 불명확/무의미/잡음 입력이거나, 현재 허용된 위치/순찰 루트/액션으로 해석할 근거가 부족하면 feasible=false
 - 존재하지 않는 장소(예: 우주, 도서관)를 임의의 허용 위치로 치환하지 마라.
@@ -121,13 +121,13 @@ FEASIBILITY_PROMPT = """\
 [판정 기준]
 - "사람을 찾아줘", "인물을 찾아줘", "find person"은 find(target_class="person")으로 실행 가능한 명령이다.
 - "찾아줘" 계열 명령은 추적 명령이 아니므로 follow 없이도 실행 가능하다.
-- 허용된 위치/액션으로 자연스럽게 해석 가능하면 feasible=true
+- 허용된 위치/액션으로 자연스럽게 해석되면 feasible=true
 - "ㅁㄴㅇㄹㅁㄴㅇㅎ" 같은 잡음/오타열은 feasible=false
 - "우주로 가줘", "도서관으로 가줘"처럼 현재 시스템 범위를 벗어난 목적지는 feasible=false
-- find/scan/follow/assess_scene/follow_query를 포함한 복합 명령도 현재 액션 집합으로 해석 가능하면 feasible=true
+- find/scan/follow/assess_scene/follow_query를 포함한 복합 명령도 현재 액션 집합으로 해석되면 feasible=true
 
 [출력 형식]
-반드시 아래 JSON 형식으로만 응답하라.
+응답은 아래 JSON 형식만 허용한다.
 {{
   "feasible": true,
   "reason": "짧은 판정 이유",
@@ -190,7 +190,7 @@ def classify_command_feasibility(
 ) -> CommandFeasibility | None:
     """Top-level 사용자 명령이 실행 가능한지 사전 판정합니다.
 
-    판정 실패 시 None을 반환하고, 기존 planning 경로를 계속 사용합니다.
+    판정 실패 시 None을 반환하며 기존 planning 경로를 계속 사용합니다.
     """
     messages = [
         {"role": "system", "content": build_feasibility_prompt(locations, patrol_routes)},

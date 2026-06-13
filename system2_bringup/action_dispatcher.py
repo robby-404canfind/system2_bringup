@@ -11,7 +11,7 @@ Perception ActionServer cancel 미지원 주의:
   find/scan/follow/assess_scene/resolve_target는 cancel_callback 미등록,
   exec_*() 내부에 취소 플래그 없음.
   상위에서 threading timeout으로 중단하면 로봇이 /cmd_vel을 계속 publish할 수 있음.
-  따라서 Perception Action은 Goal의 자체 timeout에 위임하고,
+  Perception Action은 Goal의 자체 timeout에 위임하며
   max_duration_sec는 적용하지 않음.
 """
 import time
@@ -158,7 +158,7 @@ class ActionDispatcher:
                 message=f"[sim] patrol({area}, {duration}s) done",
             )
 
-        # patrol duration 자체가 timeout 역할이지만,
+        # patrol duration 자체가 timeout 역할을 하지만
         # max_duration_sec가 더 짧으면 그 값으로 제한
         effective_dur = min(duration, int(max_dur)) if max_dur is not None else duration
 

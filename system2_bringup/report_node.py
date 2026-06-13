@@ -1,7 +1,7 @@
 """report_node.py — report(status) Unit Action helper.
 
 Ch03에서 가져온 순수 함수형 helper입니다.
-Ch05에서는 ActionDispatcher가 report_callback을 통해 /system2/report 연결을 담당합니다.
+Ch05에서는 ActionDispatcher가 report_callback으로 /system2/report 연결을 담당합니다.
 """
 
 
